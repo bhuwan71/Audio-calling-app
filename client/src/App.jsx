@@ -7,79 +7,13 @@ function App() {
   const [isCalling, setIsCalling] = useState(false);
   const [roomId, setRoomId] = useState("");
   const [callRinging, setCallRinging] = useState(false);
+  const [callerId, setCallerId] = useState("");
+  const [receiverId, setReceiverId] = useState("");
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const ringingSoundRef = useRef(new Audio(`${ringing}`));
-
-  useEffect(() => {
-    navigator.mediaDevices
-      .getUserMedia({ audio: true, video: false })
-      .then((stream) => {
-        localStreamRef.current = stream;
-        const audioContext = new AudioContext();
-        const analyser = audioContext.createAnalyser();
-        const microphone = audioContext.createMediaStreamSource(stream);
-        microphone.connect(analyser);
-        analyser.fftSize = 32;
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-
-        const updateMeter = () => {
-          analyser.getByteFrequencyData(dataArray);
-          const average =
-            dataArray.reduce((acc, val) => acc + val, 0) / bufferLength;
-          setIsSpeaking(average > 50);
-          requestAnimationFrame(updateMeter);
-        };
-
-        updateMeter();
-      })
-      .catch((error) => {
-        console.error("Error accessing microphone:", error);
-      });
-
-    socket.on("call_started", () => {
-      setIsCalling(true);
-      setCallRinging(false); // Reset callRinging state when the call is answered
-      createPeerConnection();
-    });
-
-    socket.on("call_ended", () => {
-      setIsCalling(false);
-      setCallRinging(false); // Reset callRinging state when the call ends
-      closePeerConnection();
-    });
-
-    socket.on("offer", (offer) => {
-      peerConnectionRef.current.setRemoteDescription(
-        new RTCSessionDescription(offer)
-      );
-      peerConnectionRef.current.createAnswer().then((answer) => {
-        peerConnectionRef.current.setLocalDescription(answer);
-        socket.emit("answer", { roomId, answer });
-      });
-    });
-
-    socket.on("answer", (answer) => {
-      peerConnectionRef.current.setRemoteDescription(
-        new RTCSessionDescription(answer)
-      );
-    });
-
-    socket.on("ice_candidate", (candidate) => {
-      peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-    });
-
-    // Handle callRinging state when receiving a call
-    socket.on("start_call", (roomId) => {
-      setRoomId(roomId);
-      setCallRinging(true);
-      ringingSoundRef.current.play();
-    });
-  }, []);
 
   const createPeerConnection = () => {
     peerConnectionRef.current = new RTCPeerConnection();
@@ -113,24 +47,133 @@ function App() {
     }
   };
 
+  const stopRinging = () => {
+    ringingSoundRef.current.pause();
+    ringingSoundRef.current.currentTime = 0; // Reset the audio to the beginning
+  };
+
   const startCall = () => {
     const roomId = Math.random().toString(36).substr(2, 8);
     setRoomId(roomId);
     setCallRinging(true);
     ringingSoundRef.current.play();
-    socket.emit("start_call", roomId);
+    socket.emit("start_call", { roomId, callerId, receiverId });
+  };
+
+  const answerCall = () => {
+    setCallRinging(false);
+    setIsCalling(true);
+    createPeerConnection();
+    socket.emit("answer_call", roomId);
   };
 
   const endCall = () => {
     socket.emit("end_call", roomId);
+    stopRinging();
     closePeerConnection();
     setIsCalling(false);
     setRoomId("");
     setCallRinging(false);
   };
 
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ audio: true, video: false })
+      .then((stream) => {
+        localStreamRef.current = stream;
+        const audioContext = new AudioContext();
+        const analyser = audioContext.createAnalyser();
+        const microphone = audioContext.createMediaStreamSource(stream);
+        microphone.connect(analyser);
+        analyser.fftSize = 32;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const updateMeter = () => {
+          analyser.getByteFrequencyData(dataArray);
+          const average =
+            dataArray.reduce((acc, val) => acc + val, 0) / bufferLength;
+          setIsSpeaking(average > 50);
+          requestAnimationFrame(updateMeter);
+        };
+
+        updateMeter();
+      })
+      .catch((error) => {
+        console.error("Error accessing microphone:", error);
+      });
+
+    socket.on("call_started", (data) => {
+      const { callerId, roomId } = data;
+      setRoomId(roomId);
+      setCallRinging(true);
+      ringingSoundRef.current.play();
+    });
+
+    socket.on("call_ended", () => {
+      setIsCalling(false);
+      setCallRinging(false);
+      closePeerConnection();
+    });
+
+    socket.on("offer", (offer) => {
+      peerConnectionRef.current.setRemoteDescription(
+        new RTCSessionDescription(offer)
+      );
+      peerConnectionRef.current.createAnswer().then((answer) => {
+        peerConnectionRef.current.setLocalDescription(answer);
+        socket.emit("answer", { roomId, answer });
+      });
+    });
+
+    socket.on("answer", (answer) => {
+      peerConnectionRef.current.setRemoteDescription(
+        new RTCSessionDescription(answer)
+      );
+    });
+
+    socket.on("ice_candidate", (candidate) => {
+      peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+  }, []);
+
   return (
     <div>
+      {!isCalling && !callRinging && (
+        <div style={{ textAlign: "center", marginTop: "20px" }}>
+          <input
+            type="text"
+            placeholder="Your ID"
+            value={callerId}
+            onChange={(e) => setCallerId(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Receiver's ID"
+            value={receiverId}
+            onChange={(e) => setReceiverId(e.target.value)}
+          />
+          <button
+            onClick={startCall}
+            style={{
+              padding: "15px 30px",
+              fontSize: "18px",
+              fontWeight: "bold",
+              backgroundColor: "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+              cursor: "pointer",
+              transition: "background-color 0.3s",
+            }}
+            onMouseEnter={(e) => (e.target.style.backgroundColor = "#0056b3")}
+            onMouseLeave={(e) => (e.target.style.backgroundColor = "#007bff")}
+          >
+            Start Call
+          </button>
+        </div>
+      )}
       {isCalling ? (
         <div
           style={{
@@ -216,33 +259,12 @@ function App() {
               borderRadius: "5px",
               cursor: "pointer",
             }}
+            onClick={endCall}
           >
             End Call
           </button>
         </div>
-      ) : (
-        <div style={{ textAlign: "center", marginTop: "20px" }}>
-          <button
-            onClick={startCall}
-            style={{
-              padding: "15px 30px",
-              fontSize: "18px",
-              fontWeight: "bold",
-              backgroundColor: "#007bff",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-              cursor: "pointer",
-              transition: "background-color 0.3s",
-            }}
-            onMouseEnter={(e) => (e.target.style.backgroundColor = "#0056b3")}
-            onMouseLeave={(e) => (e.target.style.backgroundColor = "#007bff")}
-          >
-            Start Call
-          </button>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -17,10 +17,7 @@ io.on("connection", (socket) => {
   socket.on("start_call", (data) => {
     const { roomId, callerId, receiverId } = data;
     socket.join(roomId);
-    console.log(
-      `${callerId} started call with ${receiverId} in room ${roomId}`
-    );
-    socket.to(roomId).emit("call_started", { callerId, receiverId });
+    io.to(receiverId).emit("call_started", { callerId, roomId });
   });
 
   socket.on("end_call", (roomId) => {
@@ -28,20 +25,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("offer", (data) => {
-    const { roomId, offer, callerId, receiverId } = data;
-    socket.to(roomId).emit("offer", { offer, callerId, receiverId });
+    socket.to(data.roomId).emit("offer", data.offer);
   });
 
   socket.on("answer", (data) => {
-    const { roomId, answer, callerId, receiverId } = data;
-    socket.to(roomId).emit("answer", { answer, callerId, receiverId });
+    socket.to(data.roomId).emit("answer", data.answer);
   });
 
   socket.on("ice_candidate", (data) => {
-    const { roomId, candidate, callerId, receiverId } = data;
-    socket
-      .to(roomId)
-      .emit("ice_candidate", { candidate, callerId, receiverId });
+    socket.to(data.roomId).emit("ice_candidate", data.candidate);
   });
 });
 
