@@ -1,7 +1,7 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
+const express = require("express");
+const http = require("http");
+const socketIo = require("socket.io");
+const cors = require("cors");
 
 const app = express();
 const server = http.createServer(app);
@@ -9,31 +9,39 @@ const io = socketIo(server);
 
 app.use(cors());
 
-io.on('connection', (socket) => {
-  socket.on('disconnect', () => {
-    console.log('user disconnected');
+io.on("connection", (socket) => {
+  socket.on("disconnect", () => {
+    console.log("user disconnected");
   });
 
-  socket.on('start_call', (roomId) => {
+  socket.on("start_call", (data) => {
+    const { roomId, callerId, receiverId } = data;
     socket.join(roomId);
-    console.log("start call",roomId);
-    socket.to(roomId).emit('call_started');
+    console.log(
+      `${callerId} started call with ${receiverId} in room ${roomId}`
+    );
+    socket.to(roomId).emit("call_started", { callerId, receiverId });
   });
 
-  socket.on('end_call', (roomId) => {
-    socket.to(roomId).emit('call_ended');
+  socket.on("end_call", (roomId) => {
+    socket.to(roomId).emit("call_ended");
   });
 
-  socket.on('offer', (data) => {
-    socket.to(data.roomId).emit('offer', data.offer);
+  socket.on("offer", (data) => {
+    const { roomId, offer, callerId, receiverId } = data;
+    socket.to(roomId).emit("offer", { offer, callerId, receiverId });
   });
 
-  socket.on('answer', (data) => {
-    socket.to(data.roomId).emit('answer', data.answer);
+  socket.on("answer", (data) => {
+    const { roomId, answer, callerId, receiverId } = data;
+    socket.to(roomId).emit("answer", { answer, callerId, receiverId });
   });
 
-  socket.on('ice_candidate', (data) => {
-    socket.to(data.roomId).emit('ice_candidate', data.candidate);
+  socket.on("ice_candidate", (data) => {
+    const { roomId, candidate, callerId, receiverId } = data;
+    socket
+      .to(roomId)
+      .emit("ice_candidate", { candidate, callerId, receiverId });
   });
 });
 
